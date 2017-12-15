@@ -611,13 +611,13 @@ ACLED_full_long_Asia <- ACLED_full_long %>% filter(region %in% c("South-Eastern 
 ACLED_full_long_nooutlier <- ACLED_full_long %>% filter(FATALITIES < 1400)
 ```
 
-```{r, include=FALSE}
+```{r}
 
 m1 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long, dist = "negbin")
 
 ```
 
-```{r, results='asis', echo=FALSE}
+```{r, results='asis'}
 stargazer(m1, header=FALSE, type='latex')
 
 ```
