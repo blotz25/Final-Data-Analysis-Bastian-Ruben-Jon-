@@ -583,7 +583,7 @@ The following facet wrap plot gives an overview of the evolution of fatalities o
 
 ## Model 
 
-To test the relationship between the amount of fatalities and ideology of the actor(s) (involved), a 'Zero-inflated Negative Binomial model', i.e. a regression model for count data, is employed seeing that no values below zero are present (count data), a disproportional number of events have a death toll of zero,alongside it dealing better with overly dispersed data (seeing the great variance around the means). Because of computational limitations, we are not able to include additional controls, such as region, year or economic development.However, we compute separate models for Africa and Asia as well as model without big outliers, in order check for any obvious differences in the results. 
+To test the relationship between the amount of fatalities and ideology of the actor(s) (involved), a 'Zero-inflated Negative Binomial model', i.e. a regression model for count data, is employed seeing that no values below zero are present (count data), a disproportional number of events have a death toll of zero,alongside it dealing better with overly dispersed data (seeing the great variance around the means). Because of computational limitations, we are not able to include additional controls, such as region, year or economic development.
 
 
 ```{r, include = FALSE}
