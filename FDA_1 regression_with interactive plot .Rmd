@@ -540,18 +540,7 @@ ACLED_full %>%
 
 ### Number of Fatalities over time 
 
-Number of fatalities over time remain almost stable. While fluctuations from one year to the other remain relatively small, 1997 (Killing of 25 000 Hutu refugees in DRC) and 1999 (War Ethiopia against Eritrea) stand out with big sudden increases in fatalities. 
-
-```{r, echo=FALSE, warning=FALSE}
-ACLED_full %>% 
-  group_by(ceiling_date(EVENT_DATE, "month")) %>% 
-  mutate(sum_fatalties_overall_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
-  ggplot(aes(ceiling_date(EVENT_DATE, "month"), sum_fatalties_overall_permonth)) + 
-  geom_line() + scale_x_datetime(date_breaks = "2 year", date_labels = "%Y",  date_minor_breaks = "1 year") + 
-  labs(x = "Time", y = "Number of Fatalities")
-```
-
-We also create an interactive version of this graph:
+Interactive plot: Number of fatalities over time remain almost stable. While fluctuations from one year to the other remain relatively small, 1997 (Killing of 25 000 Hutu refugees in DRC) and 1999 (War Ethiopia against Eritrea) stand out with big sudden increases in fatalities. 
 
 ```{r, include= FALSE}
 interactive <- ACLED_full %>% 
@@ -563,7 +552,7 @@ interactive <- ACLED_full %>%
 
 ```
 
-```{r}
+```{r, echo=FALSE}
 
 ggplotly(interactive)
 
@@ -611,14 +600,14 @@ ACLED_full_long_Asia <- ACLED_full_long %>% filter(region %in% c("South-Eastern 
 ACLED_full_long_nooutlier <- ACLED_full_long %>% filter(FATALITIES < 1400)
 ```
 
-```{r}
+```{r, include=FALSE}
 
 m1 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long, dist = "negbin")
 
 ```
 
-```{r, results='asis'}
-stargazer(m1, header=FALSE, type='latex')
+```{r, results='asis', echo=FALSE}
+stargazer(m1, header=FALSE, type='html')
 
 ```
 
