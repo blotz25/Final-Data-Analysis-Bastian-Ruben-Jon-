@@ -5,7 +5,7 @@ date: "15 December 2017"
 output:
   html_document: default
   pdf_document: default
- ---
+---
 
 ```{r, include=FALSE}
 library(tidyverse)
