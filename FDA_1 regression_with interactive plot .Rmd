@@ -553,7 +553,7 @@ ACLED_full %>%
 
 We also create an interactive version of this graph:
 
-```{r, eval = FALSE}
+```{r, include= FALSE}
 interactive <- ACLED_full %>% 
   group_by(ceiling_date(EVENT_DATE, "month")) %>% 
   mutate(sum_fatalties_overall_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
