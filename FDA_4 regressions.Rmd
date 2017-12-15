@@ -1,0 +1,644 @@
+---
+title: "Are some ideologies more violent than others? Quantitative evidence from Asia and Africa."
+author: "Bastian Lotz, Ruben van Zoest, Jon Vrushi"
+date: "15 December 2017"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(dplyr)
+library(plyr)
+library(plotly)
+library(ggplot2)
+library(stringr)
+library(countrycode)
+library(data.table)
+library(RCurl)
+library(dplyr)
+library(wbstats)
+library(stargazer)
+library(pscl)
+library(data.table)
+library(psych)
+library(knitr)
+
+```
+## Theory
+
+The central research question that this data analysis tries to answer is whether certain political or religious ideologies are more violent than others. 
+
+To that end, we propose the following Hypothesis
+
+H1 ->  There is a statistically significant difference between the number of fatalities registered for groups with different ideologies.
+
+We operationalise the independent variable of ideology by using as a proxy the presence of strings in actor names that can be used to mark a certain ideology. We then end up with 7 political and religious ideologies: *Christian*, *Islam*, *Ethnic-based*, *Clan-based*, *Revolutionary*, *Republican*, *Democratic* and *Liberationary* groups.
+
+We operationalise the measurement of violence for each ideology based on a proxy which measures the number of fatalities for each conflict registered. This will serve as our dependent variable. 
+
+
+## Preparations
+
+We load the ACLED data of Africa 1997 - 2016 and 2017 as well as for Asia 2015 - 2017 into R (For all codes not included in this output, see the attached markdown file). 
+
+
+```{r, include=FALSE}
+
+tf1 <- tempfile() 
+url2015 <- paste0("http://www.acleddata.com/",
+                  "wp-content/uploads/",
+                  "2016/04/ACLED-Asia-Running-file-January-to-December-2015-V2.xlsx")
+download.file( url2015 , tf1 , mode = 'wb' ) 
+ACLED_Asia_2015 <- read_xlsx(tf1)
+
+tf2 <- tempfile() 
+url2016 <- paste0("http://www.acleddata.com/",
+                  "wp-content/uploads/",
+                  "2017/02/ACLED-Asia-Running-File-2016.xlsx")
+download.file( url2016 , tf2 , mode = 'wb' ) 
+ACLED_Asia_2016 <- read_xlsx(tf2)
+
+tf3 <- tempfile() 
+url2017 <- paste0("http://www.acleddata.com/",
+                  "wp-content/uploads/",
+                  "2017/09/ACLED-Asia-Running-File-January-August-2017.xlsx")
+download.file( url2017 , tf3 , mode = 'wb' ) 
+ACLED_Asia_2017 <- read_xlsx(tf3)
+
+tf4 <- tempfile()
+url_africa <- "https://www.acleddata.com/wp-content/uploads/2017/01/ACLED-Version-7-All-Africa-1997-2016_dyadic-file.xlsx"
+download.file( url_africa , tf4 , mode = 'wb' ) 
+ACLED_Africa <- read_xlsx(tf4)
+
+tf5 <-tempfile()
+url_africa_2017 <- "https://www.acleddata.com/wp-content/uploads/2017/12/ACLED-All-Africa-File_20170101-to-20171202-update.xlsx"
+download.file( url_africa_2017 , tf5 , mode = 'wb' ) 
+ACLED_Africa_2017 <- read_xlsx(tf5)
+
+
+```
+
+We then merge the data into one data frame.
+
+```{r, include = FALSE}
+ACLED_full <- rbind(ACLED_Africa, ACLED_Africa_2017, ACLED_Asia_2015, ACLED_Asia_2016, ACLED_Asia_2017)
+```
+
+In a next step, we assign a region variable as well as a GDP per capita variable to to every observation.
+
+```{r, include = FALSE}
+ACLED_full$region<-countrycode(ACLED_full$COUNTRY,  "country.name", "region")
+```
+
+In order to analyze ideologies of actors in later steps, we need to transform our data frame from a wide into a long format (i.e. into a monadic file). In the resulting data frame, each observation is one actor and every event appears twice. 
+
+```{r, include = FALSE}
+ACLED_full_long <- ACLED_full %>% 
+  tidyr::gather(c("ACTOR1", "ACTOR2"), key = "Actor", value = "Actor_1_2")
+```
+
+
+We use regular expressions and the grepl() function to find those ideologies in actor names that we are interested in, namely *Christian*, *Islam*, *Ethnic-based*, *Clan-based*, *Revolutionary*, *Republican*, *Democratic* and *Liberationary*. We then extract them as a new variable *Actor_Ideology* measuring the ideology of the group in question for every actor involved in a conflict.
+
+```{r, include = FALSE}
+
+ACLED_full_long <- mutate(ACLED_full_long, Actor_Ideology = ifelse(grepl("slam|usli", Actor_1_2), "Islam",
+                             ifelse(grepl("Christ", Actor_1_2), "Christian",
+                             ifelse(grepl("thni", Actor_1_2), "Ethnic",
+                             ifelse(grepl("Clan", Actor_1_2), "Clan",
+                             ifelse(grepl("evolutionar", Actor_1_2), "Revolutionary",
+                             ifelse(grepl("Republica", Actor_1_2), "Republican",
+                             ifelse(grepl("emocrat.*[^Congo\\)]$|emocracy", Actor_1_2), "Democratic",
+                             ifelse(grepl("iberat", Actor_1_2), "Liberation",
+                             ifelse(grepl("Civilian", Actor_1_2), "None-Civilian",
+                             ifelse(grepl("Unidentified", Actor_1_2), "Unidentified",
+                                    "AOther")))))))))))
+
+```
+
+
+In order to be able to work with the variable EVENT_TYPE, we transform it into factor variable. Note that the data includes some spelling error in *EVENT_TYPE* that lead to double entries of two categories. We account for this by first incorporating it in the transformation to a factor variable and then renaming the respective category so we yield the correct amount of categories.
+
+```{r, include= FALSE}
+ACLED_full$EVENT_TYPE<- factor(ACLED_full$EVENT_TYPE, levels = c(
+  "Battle-No change of territory", "Battle-Non-state actor overtakes territory", 
+  "Battle-Government regains territory",
+  "Headquarters or base established", "Strategic development", 
+  "Riots/Protests", "Violence against civilians", 
+  "Non-violent transfer of territory", "Remote violence", 
+  "RIots/Protests", "Violence Against Civilians", 
+  "Battle-Non-state actors overtake territory"))
+
+ACLED_full$EVENT_TYPE <- revalue(ACLED_full$EVENT_TYPE, c("Battle-Non-state actors overtake territory" = "Battle-Non-state actor overtakes territory", "RIots/Protests" = "Riots/Protests", "Violence Against Civilians" = "Violence against civilians"))
+
+table(ACLED_full$EVENT_TYPE)
+
+```
+
+We deactivate scientific notation to create more intuitive plot labels.
+
+```{r, include=FALSE}
+options(scipen=999) # Revert back to scientific notation via options(scipen=0)
+```
+
+
+## Exploratory Data Analysis 
+
+### Summary statistics 
+
+Some summary statistics give us a first picture of our data. 
+
+We can see that the mean value of *FATALTIIES*  is 3.75. For the standard deviation, we get a rather large value of over 70, which points to substantial variation within our data. Given that the standard deviation is much higher than the average, we need to also account for this in our model. Moreover, we compute the range of *FATALTIIES* (minimum and maximum values).  We yield a very large range in *FATALTIIES*, where the minimum value is 0 and the maximumg value is 25000. 
+
+
+```{r, include = FALSE}
+summary <- describe(ACLED_full$FATALITIES,skew=FALSE)
+```
+
+```{r, results='asis'}
+
+knitr::kable(summary, caption = "Summary statistics")
+
+```
+
+Finally, we calculate the proportion of zero *FATALTITIES* in our data and check if there are any missing values. We find that over 70% of observations have zero *FATALITIES*. This is an important finding to keep in mind for our model assumptions. However, there are no missing values in *FATALTITIES*. 
+
+```{r, include = FALSE}
+proportion_zerofatalities <- ACLED_full %>%  
+  summarise(proportion_zerofatalities = mean(FATALITIES == 0))
+
+NA_Fatalities <- ACLED_full %>% 
+  filter(is.na(FATALITIES)) %>% 
+  summarise(NA_FATALITIES_Count = n())
+
+summary2 <- cbind(proportion_zerofatalities, NA_Fatalities)
+
+```
+
+```{r, results='asis'}
+knitr::kable(summary2, caption = "Proportion of Zero Fatalities and Count of missing values")
+```
+
+### Distributions
+
+#### Distribution of Fatalities (overall)
+
+Looking at the distribution of fatalities (frequency polygon), we can see that it is highly skewed as a result of a high share of zero fatalities and large outliers. 
+
+```{r, echo=FALSE}
+ACLED_full %>% 
+  ggplot() + 
+  geom_freqpoly(mapping = aes(x = FATALITIES), binwidth = 1) + 
+  labs(x = "Fatalities", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)")
+
+```
+
+
+
+
+
+
+To get a better picture of the usual values of fatalities, we restrict the data for the frequency polygon to 30 fatalities. Only 2872 observations are above that threshold. 
+```{r, include=FALSE}
+ACLED_full %>% filter(FATALITIES > 30) %>% summarise(n())
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ACLED_full %>% ggplot() + 
+  geom_freqpoly(mapping = aes(x = FATALITIES), binwidth = 1) + 
+  scale_x_continuous(limits = c(0, 30)) + 
+  labs(x = "Fatalities", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)")
+
+```
+
+#### Distribution of Fatalities (subset by event type, region and actor_ideology)
+
+We subset the distribution of *Fatality* by *EVENT-TYPE*, *region* and *Actor_Ideology*. Distributions are largely similar across any category and show the same level of skewness, large share of zeros and many large outliers.
+
+
+```{r, include = FALSE}
+ACLED_full_clean <- 
+  ACLED_full %>% 
+  drop_na(EVENT_TYPE)
+```
+
+
+##### Distribution of Fatalities subset by event type
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full_clean %>% 
+  ggplot() + 
+  geom_freqpoly(mapping = aes(x = FATALITIES, color = EVENT_TYPE), binwidth = 1) + 
+  scale_x_continuous(limits = c(0, 30), minor_breaks = c(5,10,15,20,30,35,40,45,55,60,65,70,80,85,90,95)) + 
+  labs(x = "Fatalities", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") + 
+  facet_grid(EVENT_TYPE~., scales="free_y") + theme(strip.text.y = element_text(angle = 0), legend.position="none")
+
+```
+
+##### Distribution of Fatalities subset by region
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  ggplot() + 
+  geom_freqpoly(mapping = aes(x = FATALITIES, color = region), binwidth = 1) + 
+  scale_x_continuous(limits = c(0, 30), minor_breaks = c(5,10,15,20,30,35,40,45,55,60,65,70,80,85,90,95)) + 
+  labs(x = "Fatalities", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") + 
+  facet_grid(region~., scales="free_y") + theme(strip.text.y = element_text(angle = 0), legend.position="none")
+
+```
+
+##### Distribution of Fatalities subset by actor ideology
+
+We first clean the long data set by removing the unspecific actor ideologies, i.e. "Other", "Unidentified" and "None-Civilian" and then display the distribution of *FATALITIES* by the relevant categories of *ACTOR_IDEOLOGY*. 
+
+```{r, include=FALSE}
+ACLED_full_long_no_others <- ACLED_full_long %>%  filter(Actor_Ideology != "AOther", 
+Actor_Ideology != "Unidentified", Actor_Ideology != "None-Civilian")
+``` 
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full_long_no_others %>% 
+  ggplot() + 
+  geom_freqpoly(mapping = aes(x = FATALITIES, color = Actor_Ideology), binwidth = 1) + 
+  scale_x_continuous(limits = c(0, 30), minor_breaks = c(5,10,15,20,30,35,40,45,55,60,65,70,80,85,90,95)) + 
+  labs(x = "Fatalities", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") + 
+  scale_color_discrete(name = "Actor Ideology") +
+  facet_grid(Actor_Ideology~., scales="free_y") +theme(strip.text.y = element_text(angle = 0), legend.position="none")
+
+```
+
+
+#### Distribution of Ideologies of Actors 
+
+We now take a look at the distribution of *ACTOR_IDEOLOGY*.
+
+Actors with *ethnic*, *liberation* and *democratic* ideology are responsible for the highest number of conflict incidences. Groups who are associated with *Islam*, *Revolutionary* or *Clan* follow in terms of the amount of conflicts. *Republican* and *Christian* groups exhibit very few incidents of conflict.  
+
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  ggplot(aes(x = Actor_Ideology, 
+             fill = Actor_Ideology)) + 
+  geom_bar() + 
+  coord_flip() + 
+  labs(x = "Actor Ideology", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  scale_fill_discrete(name = "Event Type") +
+  theme(legend.position="none")
+
+```
+
+We subset the the distribution of *Actor_Ideology* by *region* in order to analyze potential regional variance. Please note that low counts in South-Eastern Asia and Southern Asia is mainly attributable to the lack of data for these region before 2015. We can see that *Clan* ideology is particularly present in Eastern Africa, whereas *Liberation* and *Islam* are the major actor ideologies in Northern Africa. In Western Africa, *revolutionary* ideology is prominent. Southern Africa does not show any pattern with respect to ideology. Moroever, *Islam* is the most important ideology for South-Eastern Asia and to lesser extent for Southern Asia.
+
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  ggplot(aes(x = Actor_Ideology, 
+             fill = region)) + 
+  geom_bar() + 
+  coord_flip() + 
+  facet_wrap(~region) + 
+  labs(x = "Actor Ideology", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  theme(legend.position="none")
+
+```
+
+#### Distribution of EVENT_TYPE
+
+We continue with an analysis of the distribution of *EVENT_TYPE*.
+
+We first clean the data to remove missing values in *EVENT_TYPE*. Then, we plot the counts of *EVENT_TYPE* to get a better picture of the distribution of this variable. 
+ 
+
+```{r, include=FALSE}
+ACLED_full_clean <- 
+  ACLED_full %>% 
+  drop_na(EVENT_TYPE)
+```
+
+
+We see that most conflicts are "riots/protests" (around 73 000 times), followed by "Violence against civilians" and "Battles that do not involve a change of territory" (around 45000 respectively). "Headquarters or base established", "Battle-Government regains territory", "Non-violent transfer of territory" and "Battle-Non state actor overtakes territory" produce relatively little victims. 
+
+```{r, echo=FALSE}
+ACLED_full_clean %>% ggplot(
+  aes(x = EVENT_TYPE, 
+      fill = EVENT_TYPE)) + 
+  geom_bar() + 
+  coord_flip() + 
+  labs(x = "Event Type", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  scale_fill_discrete(name = "Event Type") + 
+  theme(legend.position="none") +
+  scale_y_continuous(labels = scales::comma)
+ 
+  
+```
+
+We take a more in-depth look by stacking the former graph by regions. Please note again, that Asia is significantly underrepresented in the data. Hence, low counts are at least partly attributed to this fact. 
+However, we can still see that "Riots/Protest" are a particularly frequent event type for Southern Asia. Moreover, violence against civilians occurs comparatively often in Eastern Africa and Northern Africa. Moreover, "Battle-no change of territory" is dominated by incidents of conflict in Eastern Africa. 
+
+
+```{r, echo=FALSE}
+ACLED_full_clean %>%  
+  ggplot(aes(x = EVENT_TYPE, 
+             fill = region)) + 
+  geom_bar(position = "stack") + 
+  coord_flip() +  
+  labs(x = "Event Type", y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  scale_fill_discrete(name = "Region") +
+  scale_y_continuous(labels = scales::comma)
+```
+
+#### Distribution of Region 
+
+Looking at the overall regional distribution for all years, not taking into account that data for Asia is not available before 2015, Eastern Africa exhibits the most incidents of conflicts at 57 700. Northern Africa (ca. 40 000), Western Africa (ca. 27 000) and Eastern Africa (ca. 21 000) also demonstrate relatively high numbers of incidents. Surprisingly, Southern Asia has the third largest number of conflict incidents (ca. 34 000), even though data on this region is only available for the years 2015 to 2017. 
+
+
+```{r, echo=FALSE}
+ACLED_full %>%  
+  ggplot(aes(x = region, 
+             fill = region)) + 
+  geom_bar() +  
+  labs(y = "Count", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  scale_fill_discrete(name = "Region") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+```
+
+## Covaration
+
+In order to get a first idea of covariation between our dependent variable and relevant independent variables, we conduct the following analysis. 
+
+
+### Between Fatalities and Event Type 
+
+The boxplot shows very similar distributions across event types. Median is at 0 for all event types. Violence against civilians has a particularly large outlier at 25 000 fatalities and Battle-No Change of territory has an outlier at around 6000.
+
+```{r, echo=FALSE}
+ACLED_full_clean %>% 
+  ggplot(mapping = aes(x = EVENT_TYPE, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  labs(x = "Event Type", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  scale_y_continuous(labels = scales::comma)
+```
+
+Filtering out the two outliers, gives the following boxplot, that allows to show more variation within the categories. The skewness of fatalities is clearly visible with most values at or around zero and many large outliers present.
+
+
+```{r, echo=FALSE}
+ACLED_full_clean %>% 
+  filter(FATALITIES < 1400 ) %>% 
+  ggplot(mapping = aes(x = EVENT_TYPE, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  labs(x = "Event Type", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") 
+```
+
+Event types "Violence against civilians" and "Battle-No change of territory" have most fatalities. However, these are also the two event types with the largest outliers. Other event types exhibit comparatively few victims.  
+
+```{r, echo=FALSE}
+ACLED_full_clean%>% 
+  group_by(EVENT_TYPE) %>% 
+  summarise(sum_fatalties_per_eventtype = sum(FATALITIES, na.rm = TRUE)) %>% 
+  ggplot(aes(EVENT_TYPE, sum_fatalties_per_eventtype,  fill = EVENT_TYPE)) + 
+  geom_bar(stat = "identity") + coord_flip() + 
+  labs(x = "Event Type", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") + 
+  theme(legend.position="none") +
+  scale_y_continuous(labels = scales::comma)
+```
+
+
+### Between Fatalities and Region 
+
+The boxplot shows very similar distributions across regions. Median is at 0 for all regions. The skewness of fatalities is clearly visible with most values at or around zero. Besides Southern Asia, South-Eastern Asia and Southern Africa, all regions exhibit large outliers.
+
+```{r, echo=FALSE}
+ACLED_full_clean %>% 
+  filter(FATALITIES < 1400 ) %>% 
+  ggplot(mapping = aes(x = region, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() + 
+  labs(x = "Region", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") 
+
+```
+
+A bar graph demonstrating the relationship between *region* and *FATALITIES* shows us that Eastern Africa (ca. 23 000) and Middle Africa (ca. 25 000) have most fatalities. Northern Africa also features relatively high numbers of fatalities. Southern Africa has very few victims. For Asian regions numbers are also low, but data constraints need to be taken into account here. 
+
+```{r, echo=FALSE}
+ACLED_full %>% 
+  group_by(region) %>% 
+  summarise(fatalities_region = sum(FATALITIES)) %>% 
+ggplot(aes(region, fatalities_region, fill=region)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Region", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  guides(fill=FALSE) +
+  scale_y_continuous(labels = scales::comma)
+
+```
+
+
+### Between Fatalities and Actor Ideology 
+
+We create boxplots with no limit on fatalities, limit at 1400 and limit at 30 fatalities. 
+
+In the boxplot with no limit on *Actor_Ideology*, we see that the largest outlier in our data (25000 fatalities) is within the Liberation ideology.
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  ggplot(mapping = aes(x = Actor_Ideology, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() +
+  labs(x = "Actor Ideology", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") + 
+  scale_y_continuous(labels = scales::comma)
+```
+
+
+Limiting our results at 1400 to exclude this outlier, the boxplot shows very similar distributions across *Actor_Ideology*. Particularly large outliers exist for the *Liberation*, *Islam*, *Ethnic* and *Democratic* Ideologies. 
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  filter(FATALITIES < 1400) %>% 
+  ggplot(mapping = aes(x = Actor_Ideology, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() +
+  labs(x = "Actor Ideology", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") 
+```
+
+Taking an even closer look by limiting our boxplot to 30 fatalities, we can see that for the ideologies *Islam*, *Ethnic*, *Clan* and *Christian*, the median of fatalities is non-zero. In general, IQRs also vary across ideologies. 
+
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  filter(FATALITIES < 30) %>% 
+  ggplot(mapping = aes(x = Actor_Ideology, y = FATALITIES)) + 
+  geom_boxplot() + 
+  coord_flip() +
+  labs(x = "Actor Ideology", y = "Fatalities", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") 
+```
+
+Looking at a barchart, we see that *Liberation* has most fatalities, but given the very large outlier of 25 000 fatalities in one single event and an overall median of 0, a clear correlation cannot easily be established. The correlations between the actor ideologies *Ethnic* and *Islam* seem more promising in this respect, because their data spreads around a non-zero median and outliers are not as large as in the case of Liberation and Democratic ideologies. 
+
+```{r, echo=FALSE}
+ACLED_full_long_no_others %>% 
+  group_by(Actor_Ideology) %>% 
+  summarise(fatalities_ideology = sum(FATALITIES)) %>% 
+ggplot(aes(Actor_Ideology, fatalities_ideology, 
+           fill=Actor_Ideology)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Actor Ideology", y = "Fatalities", caption = " Years: 1997-2017 (Africa); 2015-2017 (Asia)") +
+  guides(fill=FALSE) + scale_y_continuous(labels = scales::comma)
+```
+
+
+## Time Series 
+
+We analzye the development of conflict incidents and their fatalities over time. 
+
+
+### Total Number of Conflicts over time 
+
+```{r, include==FALSE}
+ACLED_full$EVENT_DATE <- as_datetime(ACLED_full$EVENT_DATE) # convert in datetime format
+```
+
+
+The evolution of conflict incidences shows a clear upward trend. However, the sudden increase in 2015 is due to extra data for Asia only available after that time. 
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  ggplot(aes(EVENT_DATE)) + 
+  geom_freqpoly(binwidth = 2529000)  + 
+  labs(x = "Time", y = "Number of conflicts", caption = "Years: 1997-2017 (Africa); 2015-2017 (Asia)") # 30 day bins 
+```
+
+We take this into account by looking separately at the evolution in Africa and Asia. For Africa only, this yields the following time series (1997 - 2017) with similar upward trend as before. For Asia, we still see an upward trend, but not as strong as with the Africa data. 
+
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  filter(region == "Eastern Africa"| region == "Middle Africa"  | region ==  "Northern Africa"| region == "Southern Africa" | region == "Western Africa") %>% 
+  ggplot(aes(EVENT_DATE)) + 
+  geom_freqpoly(binwidth = 2529000) + 
+  labs(x = "Time", y = "Number of conflicts", caption = "Years: 1997-2017 (Africa)")
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  filter(region == "South-Eastern Asia"| region == "Southern Asia") %>% 
+  ggplot(aes(EVENT_DATE)) + 
+  geom_freqpoly(binwidth = 864000)  + 
+  labs(x = "Time", y = "Number of conflicts", caption = "Years: 2015-2017 (Asia)") # 10 day bins
+```
+
+
+### Number of Fatalities over time 
+
+Number of fatalities over time remain almost stable. While fluctuations from one year to the other remain relatively small, 1997 (Killing of 25 000 Hutu refugees in DRC) and 1999 (War Ethiopia against Eritrea) stand out with big sudden increases in fatalities. 
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  group_by(ceiling_date(EVENT_DATE, "month")) %>% 
+  mutate(sum_fatalties_overall_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
+  ggplot(aes(ceiling_date(EVENT_DATE, "month"), sum_fatalties_overall_permonth)) + 
+  geom_line() + scale_x_datetime(date_breaks = "2 year", date_labels = "%Y",  date_minor_breaks = "1 year") + 
+  labs(x = "Time", y = "Number of Fatalities")
+```
+
+We also create an interactive version of this graph:
+
+```{r, include = FALSE}
+interactive <- ACLED_full %>% 
+  group_by(ceiling_date(EVENT_DATE, "month")) %>% 
+  mutate(sum_fatalties_overall_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
+  ggplot(aes(ceiling_date(EVENT_DATE, "month"), sum_fatalties_overall_permonth)) + 
+  geom_line() + scale_x_datetime(date_breaks = "2 year", date_labels = "%Y",  date_minor_breaks = "1 year") + 
+  labs(x = "Time", y = "Number of Fatalities")
+
+```
+
+```{r}
+
+ggplotly(interactive)
+
+```
+
+The following facet wrap plot gives an overview of the evolution of fatalities over time in the various regions: 
+
+
+```{r, echo=FALSE, warning=FALSE}
+ACLED_full %>% 
+  group_by(region, ceiling_date(EVENT_DATE, "month")) %>% 
+  mutate(sum_fatalties_region_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
+  ggplot(aes(ceiling_date(EVENT_DATE, "month"), sum_fatalties_region_permonth)) + 
+  geom_line() + 
+  scale_x_datetime(date_breaks = "5 year", date_labels = "%Y", date_minor_breaks = "1 year") +
+  labs(x = "Time", y = "Number of Fatalities") +
+  facet_wrap(~ACLED_full$region, scales = "free_y")
+
+```
+
+The following facet wrap plot gives an overview of the evolution of fatalities over time in the actor ideologies of interest. 
+
+
+```{r, echo=FALSE, warning=FALSE}
+  ACLED_full_long_no_others %>% 
+    group_by(Actor_Ideology, ceiling_date(EVENT_DATE, "month")) %>% 
+    mutate(sum_fatalties_ideology_permonth = sum(FATALITIES, na.rm = TRUE)) %>% 
+    ggplot(aes(ceiling_date(EVENT_DATE, "month"), sum_fatalties_ideology_permonth)) + 
+    geom_line() + 
+    labs(x = "Time", y = "Number of Fatalities") +
+    facet_wrap(~ ACLED_full_long_no_others$Actor_Ideology, scales = "free_y") +
+    scale_x_datetime(date_breaks = "5 year", date_labels = "%Y", date_minor_breaks = "1 year") 
+```
+
+## Model 
+
+To test the relationship between the amount of fatalities and ideology of the actor(s) (involved), a 'Zero-inflated Negative Binomial model', i.e. a regression model for count data, is employed seeing that no values below zero are present (count data), a disproportional number of events have a death toll of zero,alongside it dealing better with overly dispersed data (seeing the great variance around the means). Because of computational limitations, we are not able to include additional controls, such as region, year or economic development.However, we compute separate models for Africa and Asia as well as model without big outliers, in order check for any obvious differences in the results. 
+
+
+```{r, include = FALSE}
+ACLED_full_long_Africa <- ACLED_full_long %>% filter(region %in% c("Eastern Africa", "Western Africa", "Southern Africa", "Middle Africa", "Northern Africa") )
+
+ACLED_full_long_Asia <- ACLED_full_long %>% filter(region %in% c("South-Eastern Asia", "Southern Asia") )
+
+ACLED_full_long_nooutlier <- ACLED_full_long %>% filter(FATALITIES < 1400)
+```
+
+```{r, include=FALSE}
+
+m1 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long, dist = "negbin")
+
+m2 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long_Africa, dist = "negbin")
+
+m3 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long_Asia, dist = "negbin")
+
+m4 <- zeroinfl(formula = FATALITIES ~ Actor_Ideology | Actor_Ideology, data=ACLED_full_long_nooutlier, dist = "negbin")
+
+```
+
+```{r, results='asis'}
+stargazer(m1, header=FALSE, type='latex')
+
+```
+
+As it turns out, all ideology coefficients are statistically significant. In the baseline scenario of no assigned ideology (Category: Others), any conflict is expected to lead to exp(constant) = exp(2.107) = 8.35 fatalities, holding all other factors constant. Looking at specific ideologies, it seems that in the case actors identifying with Christian ideology participate in a conflict, fatalities are exp(1.003) = 2.72 times higher compared to a conflict without them, all else being equal. Moreover, ethnic ideology increases fatalities by a factor of exp(0,161) = 1.174 and liberational ideology increases fatalities by a factor of exp(0.675) = 1.96. All other ideologies show a negative correlation with *FATALITIES*. For example, identification with Islam is associated with a decrease of *FATALITIES* by a factor of exp(-0.560) = 0,57, holding all other variables constant.  
+
+As a result, we conclude that there is statistically significant effect of number of fatalities registered for groups with different ideologies. 
+
+### Limitations
+
+We recognise that our way of ascertaining the ideology of actors involved is far from perfect. It is more than likely that some actors may not include any of the terms which we identified, however they do espouse a certain ideology.
+
+There are ideologies which may have been left out of the analysis by omission. Further research would need to bring more robust theory in the construction of ideological categories.
+
+Finally, our dependent variable may be confounded to an extent. For each violent event there are at least two actors involved. Our data shows fatalities per event, rather than who caused the fatalities. This means that we are not fully able to disaggregate the responsible perpetrators, and so the proxy in essence measures how many fatalities tend to happen when a certain actor is part of the event.
+
+
